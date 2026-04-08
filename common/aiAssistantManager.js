@@ -13,8 +13,12 @@ class AIAssistantManager {
             throw new Error('질문을 입력해 주세요.');
         }
 
+        if (window.locationModule && !window.locationModule.hasLocationSelection()) {
+            await this.ensureLocationFromQuestion(question);
+        }
+
         if (window.locationModule && !window.locationModule.validateLocationSelection()) {
-            throw new Error('행정구역을 먼저 선택해 주세요.');
+            throw new Error('질문에서 주소를 찾지 못했습니다. 주소나 지번을 함께 적어 주세요.');
         }
 
         const floorService = window.serviceManager?.services?.get('floor-outline');
@@ -62,6 +66,65 @@ class AIAssistantManager {
             items: analysis.evidenceRows,
             totalCount: analysis.evidenceRows.length
         };
+    }
+
+    static async ensureLocationFromQuestion(question) {
+        const parsed = this.extractLocationContext(question);
+        if (!parsed.regionName) {
+            return null;
+        }
+
+        const candidates = await window.locationModule.searchRegionByName(parsed.regionName);
+        if (!candidates.length) {
+            return null;
+        }
+
+        const targetToken = parsed.regionName.replace(/\s+/g, '');
+        const selected = candidates.find(item => item.displayName.replace(/\s+/g, '') === targetToken)
+            || candidates.find(item => item.displayName.includes(parsed.regionName))
+            || candidates[0];
+
+        window.locationModule.applyResolvedLocation(selected, {
+            jibun: parsed.jibun,
+            source: `AI 질문에서 "${parsed.regionName}${parsed.jibun ? ` ${parsed.jibun}` : ''}"로 해석했습니다.`
+        });
+
+        return {
+            ...parsed,
+            selected
+        };
+    }
+
+    static extractLocationContext(question) {
+        const text = String(question || '').replace(/\s+/g, ' ').trim();
+        const jibunMatch = text.match(/(\d{1,4}(?:-\d{1,4})?)/);
+        const jibun = jibunMatch ? jibunMatch[1] : '';
+
+        const regionPatterns = [
+            /([가-힣]+시\s+[가-힣]+구\s+[가-힣0-9]+동)/,
+            /([가-힣]+시\s+[가-힣]+군\s+[가-힣0-9]+읍)/,
+            /([가-힣]+시\s+[가-힣]+군\s+[가-힣0-9]+면)/,
+            /([가-힣]+시\s+[가-힣]+구\s+[가-힣0-9]+가)/,
+            /([가-힣]+구\s+[가-힣0-9]+동)/,
+            /([가-힣]+군\s+[가-힣0-9]+읍)/,
+            /([가-힣]+군\s+[가-힣0-9]+면)/,
+            /([가-힣0-9]+동)/,
+            /([가-힣0-9]+읍)/,
+            /([가-힣0-9]+면)/,
+            /([가-힣0-9]+리)/,
+            /([가-힣0-9]+가)/
+        ];
+
+        let regionName = '';
+        for (const pattern of regionPatterns) {
+            const match = text.match(pattern);
+            if (match) {
+                regionName = match[1];
+                break;
+            }
+        }
+
+        return { regionName, jibun };
     }
 
     static normalizeItems(floorItems, exclusiveItems) {

@@ -24,12 +24,12 @@ const AIAssistantService = {
             <div class="ai-ask-panel">
                 <div class="ai-panel-header">
                     <div class="ai-panel-title">AI에게 자유롭게 물어보세요</div>
-                    <div class="ai-panel-subtitle">현재 선택한 주소와 지번 기준으로 층별개요, 전유공유면적을 함께 검토합니다.</div>
+                    <div class="ai-panel-subtitle">질문에 주소와 지번을 같이 적으면 AI가 먼저 해석하고, 층별개요와 전유공유면적을 함께 검토합니다.</div>
                 </div>
 
                 <div class="form-group">
                     <label for="aiQuestion">질문</label>
-                    <textarea id="aiQuestion" rows="4" placeholder="예: 여기 영화관 몇 평이야?&#10;예: 이 건물 용도별 면적이 궁금해&#10;예: 문화 및 집회시설 관련 층만 검토표로 보여줘"></textarea>
+                    <textarea id="aiQuestion" rows="4" placeholder="예: 서울 강남구 역삼동 123-45 영화관 몇 평이야?&#10;예: 삼성동 159 문화 및 집회시설 관련 층만 보여줘&#10;예: 이 건물 용도별 면적이 궁금해"></textarea>
                 </div>
 
                 <div class="ai-example-chips">

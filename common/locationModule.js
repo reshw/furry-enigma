@@ -41,6 +41,99 @@ class LocationModule {
     }
     return true;
   }
+
+  hasLocationSelection() {
+    const sigungu = document.getElementById('sigunguCd')?.value.trim() || '';
+    const bjdong = document.getElementById('bjdongCd')?.value.trim() || '';
+    return Boolean(sigungu && bjdong);
+  }
+
+  async searchRegionByName(term) {
+    const keyword = String(term || '').trim();
+    if (!keyword) return [];
+
+    const regurl = `/.netlify/functions/region-proxy?ServiceKey=${encodeURIComponent(this.CONFIG.REGION_SERVICE_KEY)}&type=xml&pageNo=1&numOfRows=300&flag=Y&locatadd_nm=${encodeURIComponent(keyword)}`;
+    const res = await fetch(regurl);
+    const text = await res.text();
+    const xml = new DOMParser().parseFromString(text, 'text/xml');
+    const rows = Array.from(xml.querySelectorAll('row'));
+    const items = rows.map((r) => this.rowToItem(r));
+
+    const uniq = new Map();
+    for (const item of items) {
+      uniq.set(item.fullCode, item);
+    }
+
+    return Array.from(uniq.values())
+      .map((item) => ({ ...item, score: this.scoreItem(keyword, item) }))
+      .sort((a, b) => b.score - a.score || a.displayName.localeCompare(b.displayName, 'ko'));
+  }
+
+  applyResolvedLocation(item, meta = {}) {
+    if (!item) return;
+
+    this.state.selection = {
+      label: item.displayName,
+      sigungu: item.sigungu,
+      bjdong: item.bjdong,
+      code: item.fullCode,
+      type: item.typeLabel
+    };
+
+    const sigunguEl = document.getElementById('sigunguCd');
+    const bjdongEl = document.getElementById('bjdongCd');
+    if (sigunguEl) sigunguEl.value = item.sigungu;
+    if (bjdongEl) bjdongEl.value = item.bjdong;
+
+    if (meta.jibun) {
+      this.applyJibunValue(meta.jibun);
+    }
+
+    const selectedDiv = document.getElementById('selectedRegion');
+    if (selectedDiv) {
+      const extra = meta.jibun ? ` | 지번: ${meta.jibun}` : '';
+      const sourceText = meta.source ? `<br><small>${meta.source}</small>` : '';
+      selectedDiv.innerHTML = `
+        <span class="check-icon">✅</span>
+        <div>
+          <strong>선택완료:</strong> [${item.typeLabel}] ${item.displayName}${extra}<br>
+          <small>시군구 ${item.sigungu} | 법정동 ${item.bjdong} | 코드: ${item.fullCode}</small>
+          ${sourceText}
+        </div>
+      `;
+      selectedDiv.style.display = 'flex';
+    }
+  }
+
+  applyJibunValue(rawValue) {
+    const jibunInput = document.getElementById('jibun');
+    if (jibunInput) {
+      jibunInput.value = rawValue;
+    }
+
+    const normalized = String(rawValue || '').trim();
+    if (!normalized) return;
+
+    const bunEl = document.getElementById('bun');
+    const jiEl = document.getElementById('ji');
+    const previewDiv = document.getElementById('jibunPreview');
+
+    if (normalized.includes('-')) {
+      const [bunRaw, jiRaw] = normalized.split('-');
+      if (bunEl) bunEl.value = (bunRaw || '').padStart(4, '0');
+      if (jiEl) jiEl.value = (jiRaw || '').padStart(4, '0');
+      if (previewDiv) {
+        previewDiv.innerHTML = `🔎 <strong>${normalized}번지</strong> 조회`;
+      }
+      return;
+    }
+
+    if (bunEl) bunEl.value = normalized.padStart(4, '0');
+    if (jiEl) jiEl.value = '';
+    if (previewDiv) {
+      previewDiv.innerHTML = `🔎 <strong>${normalized}번지 전체</strong> 조회`;
+    }
+  }
   
 
   initEventListeners() {
