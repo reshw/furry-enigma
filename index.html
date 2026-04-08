@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>건축물 정보조회 시스템</title>    
+    <link rel="stylesheet" href="style.css">
+    <style>
+        /* 탭 스타일 추가 */
+        .tabs {
+            display: flex;
+            background: #f8f9fa;
+            border-radius: 0;
+            overflow: hidden;
+            position: relative;
+            z-index: 1;
+        }
+
+        .tab-button {
+            flex: 1;
+            padding: 16px 12px;
+            background: #e9ecef;
+            border: none;
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: #6c757d;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border-bottom: 3px solid transparent;
+        }
+
+        .tab-button.active {
+            background: white;
+            color: #004283;
+            border-bottom-color: #004283;
+            box-shadow: 0 2px 8px rgba(0, 66, 131, 0.1);
+        }
+
+        .tab-button:hover:not(.active) {
+            background: #f8f9fa;
+            color: #495057;
+        }
+
+        /* 탭 내용 */
+        .tab-content {
+            display: none;
+            padding: 20px;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .service-title {
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: #004283;
+            margin-bottom: 20px;
+            text-align: center;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        /* 헤더 수정 */
+        .header h1 {
+            margin: 0;
+            font-size: 1.4rem;
+            font-weight: 700;
+            position: relative;
+            z-index: 1;
+        }
+
+        /* 모바일에서 탭 텍스트 조정 */
+        @media (max-width: 480px) {
+            .tab-button {
+                font-size: 0.8rem;
+                padding: 14px 8px;
+            }
+        }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="config.js"></script>
+    <script src="common/locationModule.js"></script>
+    <script src="common/uiManager.js"></script>
+    <script src="common/apiManager.js"></script>
+    <script src="common/aiAssistantManager.js"></script>
+    <script src="common/tableManager.js"></script>
+    <script src="common/downloadManager.js"></script>
+    <script src="services/serviceManager.js"></script>
+    <script src="services/floorOutlineService.js"></script>
+    <script src="services/exclusiveAreaService.js"></script>
+    <script src="services/aiAssistantService.js"></script>
+    <script src="app.js"></script>
+    <script src="batch-search-manual.js"></script>
+</head>
+<body>
+    <div class="container">
+        <!-- 헤더 -->
+        <div class="header">
+            <h1>🏢 건축물 정보조회 시스템</h1>
+        </div>
+        
+        <!-- 탭 네비게이션 -->
+        <div class="tabs">
+            <button class="tab-button active" data-service="floor-outline">
+                🏢 층별개요
+            </button>
+            <button class="tab-button" data-service="exclusive-area">
+                📐 전유공유면적
+            </button>
+            <button class="tab-button" data-service="ai-assistant">
+                🤖 AI 묻기
+            </button>
+        </div>
+        
+        <!-- 탭 내용 -->
+        <div class="tab-content active" id="tab-content">
+            <div class="service-title">
+                <span id="service-title">🏢 층별개요 조회</span>
+            </div>
+            
+            <!-- 공통 지역 및 지번 입력 모듈 -->
+            <div id="common-location-module">
+                <!-- 숨겨진 코드 필드 -->
+                <input type="hidden" id="sigunguCd" />
+                <input type="hidden" id="bjdongCd" />
+                <input type="hidden" id="bun" />
+                <input type="hidden" id="ji" />
+
+                <!-- 행정구역 검색 -->
+                <div class="form-group">
+                    <label for="regionSearch">📍 행정구역 검색 <span class="required">*</span></label>
+
+                    <div class="search-container">
+                        <input type="text" id="regionSearch" placeholder="예: '도곡동' 또는 '도곡' " />
+                        <button type="button" class="btn btn-secondary" id="searchRegionBtn">검색</button>
+                    </div>
+
+                    <!-- (유지) 상태 메시지 -->
+                    <div id="regionSearchStatus" class="region-search-status" style="display:none;"></div>
+
+                    <!-- ✅ (신규) 요약바 + 타입 필터 칩 -->
+                    <div id="summaryBar" class="summary-bar" style="display:none;">
+                        <div id="summaryText" class="summary-text">검색 결과</div>
+                        <div class="chips">
+                        <span id="chipAll"  class="chip active">전체</span>
+                        <span id="chipDong" class="chip">동</span>
+                        <span id="chipRi"   class="chip">리</span>
+                        </div>
+                    </div>
+
+                    <!-- ✅ (교체) 결과 영역: class 를 result-list 로 -->
+                    <div id="regionResults" class="result-list"></div>
+
+                    <!-- (유지) 선택 배지 -->
+                    <div id="selectedRegion" class="selected-region" style="display:none;"></div>
+                </div>
+
+                <!-- 수동 코드 입력 -->
+                <div class="manual-code-section">
+                    <button type="button" class="manual-code-toggle" id="manualCodeToggle">
+                        지역 검색이 안 되시나요?
+                    </button>
+                    <div class="manual-code-content" id="manualCodeContent">
+                        <div class="manual-code-info">
+                            시군구코드와 법정동코드를 직접 입력하여 조회할 수 있습니다.
+                        </div>
+                        <div class="form-group">
+                            <label for="sigunguCdManual">시군구코드</label>
+                            <input type="text" id="sigunguCdManual" placeholder="예: 11680 (5자리)" maxlength="5" />
+                        </div>
+                        <div class="form-group">
+                            <label for="bjdongCdManual">법정동코드</label>
+                            <input type="text" id="bjdongCdManual" placeholder="예: 11800 (5자리)" maxlength="5" />
+                        </div>
+                        <button type="button" class="btn btn-secondary btn-full" id="applyManualCodes">
+                            ✅ 코드 적용하기
+                        </button>
+                    </div>
+                </div>
+
+                
+
+                <!-- 지번 입력 -->
+                <div class="form-group">
+                    <label for="jibun">🏠 지번 입력 <span class="required">*</span></label>
+                    <div class="input-with-help">
+                        <input type="text" id="jibun" placeholder="예: 467 (전체) 또는 467-14 (특정 부속지번)" />
+                        <button type="button" class="help-toggle" id="jibunHelpToggle">❓</button>
+                        <div class="help-tooltip" id="jibunHelpTooltip">
+                            <div class="help-content">
+                                <strong>📍 지번 입력 가이드</strong><br>
+                                • <code>467</code> → 467번지의 모든 부속지번 포함<br>
+                                • <code>467-0</code> → 467번지만 조회 (부속지번 제외)<br>
+                                • <code>467-14</code> → 467-14번지만 정확히 조회
+                            </div>
+                        </div>
+                    </div>
+                    <div id="jibunPreview" class="jibun-preview"></div>
+                </div>
+            </div>
+
+            <!-- 동적 서비스별 필드 -->
+            <div id="service-specific-fields">
+                <!-- 각 서비스별 전용 필드들이 동적으로 렌더링됩니다 -->
+            </div>
+
+            <!-- 조회 버튼 -->
+            <button type="button" class="btn btn-primary btn-full" id="searchButton">
+                🔍 조회하기
+            </button>
+
+            <!-- 상세 검색 옵션 -->
+            <div class="advanced-section">
+                <button type="button" class="advanced-toggle" id="advancedToggle">
+                    ⚙️ 상세 검색 옵션
+                </button>
+                <div class="advanced-content" id="advancedContent">
+                    <!-- 공통 페이징 옵션 -->
+                    <div class="grid-2">
+                        <div class="form-group">
+                            <label for="numOfRows">페이지당 결과수</label>
+                            <input type="number" id="numOfRows" value="10" min="1" max="100" />
+                        </div>
+                        <div class="form-group">
+                            <label for="pageNo">페이지번호</label>
+                            <input type="number" id="pageNo" value="1" min="1" />
+                        </div>
+                    </div>
+                    
+                    <!-- 서비스별 상세 옵션이 동적으로 들어갈 부분 -->
+                    <div id="advanced-service-fields">
+                    </div>
+                </div>
+            </div>
+
+            <!-- 진행바 -->
+            <div class="progress-container">
+                <div id="progressBar" class="progress-bar"></div>
+            </div>
+
+            <!-- 다운로드 버튼 -->
+            <div class="button-container">
+                <button id="downloadExcelButton" class="btn btn-success btn-full" style="display:none;">
+                    📊 현재 페이지 Excel 다운로드
+                </button>
+                <button id="downloadAllExcelButton" class="btn btn-info btn-full" style="display:none;">
+                    📋 전체 자료 Excel 다운로드
+                </button>
+            </div>
+
+            <!-- 페이지 정보 및 페이지네이션 -->
+            <div id="paginationInfo"></div>
+            <div id="pagination" class="pagination" style="display:none;"></div>
+
+            <!-- 결과 테이블 -->
+            <div id="resultTable"></div>
+        </div>
+    </div>
+
+    <!-- 토스트 메시지 -->
+    <div id="toast" class="toast"></div>
+    
+    <script>
+        // 수동 코드 입력 토글 기능
+        document.addEventListener('DOMContentLoaded', function() {
+            const manualCodeToggle = document.getElementById('manualCodeToggle');
+            const manualCodeContent = document.getElementById('manualCodeContent');
+            
+            if (manualCodeToggle && manualCodeContent) {
+                manualCodeToggle.addEventListener('click', function() {
+                    this.classList.toggle('active');
+                    manualCodeContent.classList.toggle('active');
+                });
+            }
+        });
+    </script>
+</body>
+</html>
