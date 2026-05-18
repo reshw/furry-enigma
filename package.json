@@ -1,8 +1,6 @@
 {
   "type": "module",
   "scripts": {
-    "dev": "vercel dev",
-    "build": "vercel build",
     "deploy": "vercel --prod"
   },
   "dependencies": {
