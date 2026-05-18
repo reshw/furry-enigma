@@ -35,7 +35,7 @@ export default async function handler(req, res) {
 
   try {
     const landUrl  = `https://api.vworld.kr/ned/data/ladfrlList?${params}`;
-    const priceUrl = `https://api.vworld.kr/ned/data/getIndvdLandPrice?${params}`;
+    const priceUrl = `https://api.vworld.kr/ned/data/getIndvdLandPriceAttr?${params}`;
 
     const [landRes, priceRes] = await Promise.all([fetch(landUrl), fetch(priceUrl)]);
     const [landData, priceData] = await Promise.all([landRes.json(), priceRes.json()]);
@@ -49,9 +49,15 @@ export default async function handler(req, res) {
     let items = Array.isArray(inner) ? inner : (inner ? [inner] : []);
 
     // 최신 공시지가 파싱 후 파셀에 병합
-    const priceWrapper = priceData?.indvdLandPriceList ?? priceData?.indvdLandPrice ?? priceData?.IndvdLandPriceList;
+    const priceWrapper = priceData?.indvdLandPrices
+                      ?? priceData?.indvdLandPriceList
+                      ?? priceData?.indvdLandPrice
+                      ?? priceData?.IndvdLandPriceList;
     if (priceWrapper) {
-      const pi = priceWrapper.indvdLandPriceList ?? priceWrapper.indvdLandPrice ?? priceWrapper.field ?? priceWrapper.item;
+      const pi = priceWrapper.field
+              ?? priceWrapper.indvdLandPriceList
+              ?? priceWrapper.indvdLandPrice
+              ?? priceWrapper.item;
       const priceItems = Array.isArray(pi) ? pi : (pi ? [pi] : []);
       if (priceItems.length > 0) {
         const latest = priceItems.sort((a, b) => (b.stdrYear ?? b.pblntfDe ?? '').localeCompare(a.stdrYear ?? a.pblntfDe ?? ''))[0];

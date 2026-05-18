@@ -39,7 +39,8 @@ export default async function handler(req, res) {
     const data     = await upstream.json();
 
     // 응답 래퍼 탐색 (vworld NED 중첩 패턴)
-    const wrapper = data?.indvdLandPriceAttr
+    const wrapper = data?.indvdLandPrices
+                 ?? data?.indvdLandPriceAttr
                  ?? data?.IndvdLandPriceAttr
                  ?? data?.indvdLandPriceList
                  ?? data?.indvdLandPrice;
@@ -51,11 +52,11 @@ export default async function handler(req, res) {
       });
     }
 
-    const inner = wrapper.indvdLandPriceAttr
+    const inner = wrapper.field
+               ?? wrapper.indvdLandPriceAttr
                ?? wrapper.IndvdLandPriceAttr
                ?? wrapper.indvdLandPriceList
                ?? wrapper.indvdLandPrice
-               ?? wrapper.field
                ?? wrapper.item;
 
     let items = Array.isArray(inner) ? inner : (inner ? [inner] : []);
