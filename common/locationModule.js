@@ -8,7 +8,6 @@
 class LocationModule {
   constructor() {
     this.CONFIG = {
-      REGION_SERVICE_KEY: window.APP_CONFIG?.REGION_SERVICE_KEY || 'YOUR_REGION_SERVICE_KEY',
       PAGE_SIZE: 100 // API numOfRows=300이라도 렌더는 적당히 나눠도 됨(여기선 한 번에 표시)
     };
 
@@ -52,7 +51,7 @@ class LocationModule {
     const keyword = String(term || '').trim();
     if (!keyword) return [];
 
-    const regurl = `/.netlify/functions/region-proxy?ServiceKey=${encodeURIComponent(this.CONFIG.REGION_SERVICE_KEY)}&type=xml&pageNo=1&numOfRows=300&flag=Y&locatadd_nm=${encodeURIComponent(keyword)}`;
+    const regurl = `/api/region-proxy?type=xml&pageNo=1&numOfRows=300&flag=Y&locatadd_nm=${encodeURIComponent(keyword)}`;
     const res = await fetch(regurl);
     const text = await res.text();
     const xml = new DOMParser().parseFromString(text, 'text/xml');
@@ -223,7 +222,7 @@ class LocationModule {
     summaryBar.style.display = 'none';
 
     try {
-      const regurl = `/.netlify/functions/region-proxy?ServiceKey=${encodeURIComponent(this.CONFIG.REGION_SERVICE_KEY)}&type=xml&pageNo=1&numOfRows=300&flag=Y&locatadd_nm=${encodeURIComponent(term)}`;
+      const regurl = `/api/region-proxy?type=xml&pageNo=1&numOfRows=300&flag=Y&locatadd_nm=${encodeURIComponent(term)}`;
       const res = await fetch(regurl);
       const text = await res.text();
       const xml = new DOMParser().parseFromString(text, 'text/xml');

@@ -13,6 +13,15 @@ function jsonResponse(statusCode, body) {
   };
 }
 
+function errorResponse(statusCode, code, message, extra = {}) {
+  return jsonResponse(statusCode, {
+    error: true,
+    code,
+    message,
+    ...extra
+  });
+}
+
 function safeJsonParse(text) {
   try {
     return JSON.parse(text);
@@ -39,15 +48,12 @@ export async function handler(event) {
   }
 
   if (event.httpMethod !== 'POST') {
-    return jsonResponse(405, { error: true, message: 'Method not allowed' });
+    return errorResponse(405, 'METHOD_NOT_ALLOWED', 'Method not allowed');
   }
 
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
-    return jsonResponse(500, {
-      error: true,
-      message: 'GEMINI_API_KEY is not configured'
-    });
+    return errorResponse(500, 'GEMINI_KEY_MISSING', 'GEMINI_API_KEY is not configured');
   }
 
   try {
@@ -56,11 +62,11 @@ export async function handler(event) {
     const purposeSummary = Array.isArray(body.purposeSummary) ? body.purposeSummary : [];
 
     if (!question) {
-      return jsonResponse(400, { error: true, message: 'Missing question' });
+      return errorResponse(400, 'QUESTION_MISSING', 'Missing question');
     }
 
     if (purposeSummary.length === 0) {
-      return jsonResponse(400, { error: true, message: 'Missing purpose summary' });
+      return errorResponse(400, 'PURPOSE_SUMMARY_MISSING', 'Missing purpose summary');
     }
 
     const prompt = [
@@ -122,16 +128,13 @@ export async function handler(event) {
 
     if (!geminiResponse.ok) {
       const errorText = await geminiResponse.text();
-      return jsonResponse(geminiResponse.status, {
-        error: true,
-        message: errorText.slice(0, 1000)
-      });
+      return errorResponse(geminiResponse.status, 'GEMINI_UPSTREAM_ERROR', errorText.slice(0, 1000));
     }
 
     const result = await geminiResponse.json();
     const text = result?.candidates?.[0]?.content?.parts?.map(part => part.text || '').join('') || '';
     if (!text) {
-      return jsonResponse(502, { error: true, message: 'Empty Gemini response' });
+      return errorResponse(502, 'GEMINI_EMPTY_RESPONSE', 'Empty Gemini response');
     }
 
     const parsed = safeJsonParse(text);
@@ -140,9 +143,6 @@ export async function handler(event) {
       result: parsed
     });
   } catch (error) {
-    return jsonResponse(500, {
-      error: true,
-      message: String(error)
-    });
+    return errorResponse(500, 'AI_ASK_INTERNAL_ERROR', String(error));
   }
 }

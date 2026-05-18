@@ -13,59 +13,64 @@ class AIAssistantManager {
             throw new Error('질문을 입력해 주세요.');
         }
 
-        if (window.locationModule && !window.locationModule.hasLocationSelection()) {
-            await this.ensureLocationFromQuestion(question);
+        try {
+            if (window.locationModule && !window.locationModule.hasLocationSelection()) {
+                await this.ensureLocationFromQuestion(question);
+            }
+
+            if (window.locationModule && !window.locationModule.validateLocationSelection()) {
+                throw new Error('질문에서 주소를 찾지 못했습니다. 주소나 지번을 함께 적어 주세요.');
+            }
+
+            const floorService = window.serviceManager?.services?.get('floor-outline');
+            const exclusiveService = window.serviceManager?.services?.get('exclusive-area');
+            if (!floorService || !exclusiveService) {
+                throw new Error('AI 분석에 필요한 서비스 설정을 찾지 못했습니다.');
+            }
+
+            window.UIManager.updateProgressBar(10);
+
+            const [floorItems, exclusiveItems] = await Promise.all([
+                window.APIManager.fetchAllDataForService(floorService),
+                window.APIManager.fetchAllDataForService(exclusiveService)
+            ]);
+
+            window.UIManager.updateProgressBar(55);
+
+            const normalizedItems = this.normalizeItems(floorItems, exclusiveItems);
+            const purposeSummary = this.buildPurposeSummary(normalizedItems);
+            const aiResult = await this.requestGemini(question, purposeSummary);
+
+            window.UIManager.updateProgressBar(80);
+
+            const analysis = this.buildAnalysis(question, normalizedItems, purposeSummary, aiResult);
+            this.renderAnswer(analysis);
+
+            if (window.AppState) {
+                window.AppState.currentData = analysis.evidenceRows;
+                window.AppState.totalCount = analysis.evidenceRows.length;
+                window.AppState.currentPage = 1;
+                window.AppState.pageSize = Math.max(analysis.evidenceRows.length, 10);
+                window.AppState.aiAnalysis = analysis;
+            }
+
+            if (analysis.evidenceRows.length > 0) {
+                window.TableManager.createTable(analysis.evidenceRows);
+                window.DownloadManager.toggleDownloadButtons(true, false);
+            } else {
+                window.TableManager.clearTable();
+                window.DownloadManager.toggleDownloadButtons(false, false);
+            }
+
+            window.UIManager.updateProgressBar(100);
+            return {
+                items: analysis.evidenceRows,
+                totalCount: analysis.evidenceRows.length
+            };
+        } catch (error) {
+            this.resetFailedState();
+            throw error;
         }
-
-        if (window.locationModule && !window.locationModule.validateLocationSelection()) {
-            throw new Error('질문에서 주소를 찾지 못했습니다. 주소나 지번을 함께 적어 주세요.');
-        }
-
-        const floorService = window.serviceManager?.services?.get('floor-outline');
-        const exclusiveService = window.serviceManager?.services?.get('exclusive-area');
-        if (!floorService || !exclusiveService) {
-            throw new Error('AI 분석에 필요한 서비스 설정을 찾지 못했습니다.');
-        }
-
-        window.UIManager.updateProgressBar(10);
-
-        const [floorItems, exclusiveItems] = await Promise.all([
-            window.APIManager.fetchAllDataForService(floorService),
-            window.APIManager.fetchAllDataForService(exclusiveService)
-        ]);
-
-        window.UIManager.updateProgressBar(55);
-
-        const normalizedItems = this.normalizeItems(floorItems, exclusiveItems);
-        const purposeSummary = this.buildPurposeSummary(normalizedItems);
-        const aiResult = await this.requestGemini(question, purposeSummary);
-
-        window.UIManager.updateProgressBar(80);
-
-        const analysis = this.buildAnalysis(question, normalizedItems, purposeSummary, aiResult);
-        this.renderAnswer(analysis);
-
-        if (window.AppState) {
-            window.AppState.currentData = analysis.evidenceRows;
-            window.AppState.totalCount = analysis.evidenceRows.length;
-            window.AppState.currentPage = 1;
-            window.AppState.pageSize = Math.max(analysis.evidenceRows.length, 10);
-            window.AppState.aiAnalysis = analysis;
-        }
-
-        if (analysis.evidenceRows.length > 0) {
-            window.TableManager.createTable(analysis.evidenceRows);
-            window.DownloadManager.toggleDownloadButtons(true, false);
-        } else {
-            window.TableManager.clearTable();
-            window.DownloadManager.toggleDownloadButtons(false, false);
-        }
-
-        window.UIManager.updateProgressBar(100);
-        return {
-            items: analysis.evidenceRows,
-            totalCount: analysis.evidenceRows.length
-        };
     }
 
     static async ensureLocationFromQuestion(question) {
@@ -189,7 +194,7 @@ class AIAssistantManager {
     }
 
     static async requestGemini(question, purposeSummary) {
-        const response = await fetch('/.netlify/functions/ai-ask', {
+        const response = await fetch('/api/ai-ask', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -202,10 +207,56 @@ class AIAssistantManager {
 
         const data = await response.json();
         if (!response.ok || data?.error) {
-            throw new Error(data?.message || 'Gemini 응답을 가져오지 못했습니다.');
+            throw new Error(this.toUserMessage(data));
         }
 
         return data.result || {};
+    }
+
+    static toUserMessage(data) {
+        const code = data?.code || '';
+
+        if (code === 'GEMINI_KEY_MISSING') {
+            return 'Gemini 환경변수가 설정되지 않았습니다. Netlify 환경변수의 GEMINI_API_KEY를 확인해 주세요.';
+        }
+
+        if (code === 'GEMINI_UPSTREAM_ERROR') {
+            return 'Gemini 호출은 되었지만 응답 처리에 실패했습니다. API 키 권한이나 모델 응답을 확인해 주세요.';
+        }
+
+        if (code === 'GEMINI_EMPTY_RESPONSE') {
+            return 'Gemini가 비어 있는 응답을 반환했습니다. 잠시 후 다시 시도해 주세요.';
+        }
+
+        if (code === 'QUESTION_MISSING') {
+            return 'AI 질문이 비어 있습니다.';
+        }
+
+        if (code === 'PURPOSE_SUMMARY_MISSING') {
+            return '건축물 요약 데이터를 만드는 데 실패했습니다.';
+        }
+
+        return data?.message || 'AI 해석 중 오류가 발생했습니다.';
+    }
+
+    static resetFailedState() {
+        const card = document.getElementById('aiAnswerCard');
+
+        if (window.AppState) {
+            window.AppState.aiAnalysis = null;
+            window.AppState.currentData = [];
+            window.AppState.totalCount = 0;
+            window.AppState.currentPage = 1;
+        }
+
+        if (card) {
+            card.style.display = 'none';
+            card.innerHTML = '';
+        }
+
+        window.TableManager.clearTable();
+        window.DownloadManager.toggleDownloadButtons(false, false);
+        window.UIManager.updateProgressBar(0);
     }
 
     static buildAnalysis(question, items, purposeSummary, aiResult) {

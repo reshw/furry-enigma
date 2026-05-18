@@ -6,9 +6,8 @@
 class APIManager {
   static get CONFIG() {
     return {
-      BUILDING_SERVICE_KEY: window.APP_CONFIG?.BUILDING_SERVICE_KEY,
       BASE_API_URL: 'https://apis.data.go.kr/1613000/BldRgstHubService',
-      NETLIFY_FUNCTION_PATH: '/.netlify/functions/bld',
+      NETLIFY_FUNCTION_PATH: '/api/bld',
       LOCAL_PROXY_BASE: ''
     };
   }
@@ -158,7 +157,6 @@ class APIManager {
   static buildParams(service, page = 1, excludePaging = false) {
     const params = new URLSearchParams({
       _type: 'json',
-      serviceKey: this.CONFIG.BUILDING_SERVICE_KEY
     });
 
     (service.requiredParams || []).forEach((paramId) => {

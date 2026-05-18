@@ -71,12 +71,10 @@ class BatchSearchManual {
     }
 
     try {
-      const serviceKey = window.APP_CONFIG.BUILDING_SERVICE_KEY;
       const endpoint = 'getBrFlrOulnInfo';
 
       const params = new URLSearchParams({
         _type: 'json',
-        serviceKey: serviceKey,
         sigunguCd: addressInfo.sigunguCd,
         bjdongCd: addressInfo.bjdongCd,
         bun: addressInfo.bun,
@@ -90,7 +88,7 @@ class BatchSearchManual {
         params.append('ji', addressInfo.ji);
       }
 
-      const url = `/.netlify/functions/bld?endpoint=${endpoint}&${params.toString()}`;
+      const url = `/api/bld?endpoint=${endpoint}&${params.toString()}`;
 
       const response = await fetch(url);
       const data = await response.json();

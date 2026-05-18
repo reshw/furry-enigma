@@ -43,17 +43,12 @@ class BatchSearch {
   constructor() {
     this.results = [];
     this.errors = [];
-    this.vworldApiKey = window.APP_CONFIG?.VWORLD_API_KEY || ''; // vworld API 키
   }
 
   // 1단계: 도로명주소 → 법정동코드 + 지번 변환
   async convertAddress(roadAddr) {
     try {
-      if (!this.vworldApiKey) {
-        throw new Error('vworld API 키가 설정되지 않았습니다. config.js에서 VWORLD_API_KEY를 설정해주세요.');
-      }
-
-      const url = `/.netlify/functions/vworld-proxy?address=${encodeURIComponent(roadAddr)}&key=${encodeURIComponent(this.vworldApiKey)}`;
+      const url = `/api/vworld-proxy?address=${encodeURIComponent(roadAddr)}`;
 
       const response = await fetch(url);
       const result = await response.json();
@@ -118,12 +113,10 @@ class BatchSearch {
     }
 
     try {
-      const serviceKey = window.APP_CONFIG.BUILDING_SERVICE_KEY;
       const endpoint = 'getBrFlrOulnInfo';
 
       const params = new URLSearchParams({
         _type: 'json',
-        serviceKey: serviceKey,
         sigunguCd: addressInfo.sigunguCd,
         bjdongCd: addressInfo.bjdongCd,
         bun: addressInfo.bun,
@@ -137,7 +130,7 @@ class BatchSearch {
         params.append('ji', addressInfo.ji);
       }
 
-      const url = `/.netlify/functions/bld?endpoint=${endpoint}&${params.toString()}`;
+      const url = `/api/bld?endpoint=${endpoint}&${params.toString()}`;
 
       const response = await fetch(url);
       const data = await response.json();
