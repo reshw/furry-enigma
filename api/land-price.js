@@ -18,7 +18,7 @@ export default async function handler(req, res) {
   const apiKey = process.env.VWORLD_API_KEY2;
   if (!apiKey) return res.status(500).json({ error: 'VWORLD_API_KEY2 not configured' });
 
-  const gb     = platGbCd || '1';
+  const gb     = (platGbCd && platGbCd !== '0') ? platGbCd : '1';
   const bunPad = String(bun).padStart(4, '0');
   const jiPad  = String(ji  || '0').padStart(4, '0');
   const pnu    = `${sigunguCd}${bjdongCd}${gb}${bunPad}${jiPad}`;
