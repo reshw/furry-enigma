@@ -1,6 +1,5 @@
 // Vercel API Route: /api/land
-// vworld 토지임야목록조회 프록시
-// https://api.vworld.kr/ned/data/ladfrlList
+// vworld 토지임야목록조회 + 개별공시지가기본현황 병합 프록시
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -22,9 +21,10 @@ export default async function handler(req, res) {
   const bunPad = String(bun).padStart(4, '0');
   const jiPad  = String(ji  || '0').padStart(4, '0');
   const pnu    = `${sigunguCd}${bjdongCd}${gb}${bunPad}${jiPad}`;
-
   const domain = process.env.VWORLD_DOMAIN || '';
-  const params = new URLSearchParams({
+
+  // ladfrlList: pnu 기반
+  const landParams = new URLSearchParams({
     key:       apiKey,
     pnu,
     format:    'json',
@@ -33,9 +33,19 @@ export default async function handler(req, res) {
     ...(domain && { domain }),
   });
 
+  // getIndvdLandPrice: reqLvl(법정동코드) 기반
+  const priceParams = new URLSearchParams({
+    key:       apiKey,
+    reqLvl:    `${sigunguCd}${bjdongCd}`,
+    format:    'json',
+    numOfRows: '1000',
+    pageNo:    '1',
+    ...(domain && { domain }),
+  });
+
   try {
-    const landUrl  = `https://api.vworld.kr/ned/data/ladfrlList?${params}`;
-    const priceUrl = `https://api.vworld.kr/ned/data/getIndvdLandPriceAttr?${params}`;
+    const landUrl  = `https://api.vworld.kr/ned/data/ladfrlList?${landParams}`;
+    const priceUrl = `https://api.vworld.kr/ned/data/getIndvdLandPrice?${priceParams}`;
 
     const [landRes, priceRes] = await Promise.all([fetch(landUrl), fetch(priceUrl)]);
     const [landData, priceData] = await Promise.all([landRes.json(), priceRes.json()]);
@@ -48,20 +58,35 @@ export default async function handler(req, res) {
     const inner = wrapper.ladfrlVOList ?? wrapper.ladfrlList ?? wrapper.field ?? wrapper.item;
     let items = Array.isArray(inner) ? inner : (inner ? [inner] : []);
 
-    // 최신 공시지가 파싱 후 파셀에 병합
-    const priceWrapper = priceData?.indvdLandPrices
-                      ?? priceData?.indvdLandPriceList
-                      ?? priceData?.indvdLandPrice
-                      ?? priceData?.IndvdLandPriceList;
-    if (priceWrapper) {
-      const pi = priceWrapper.field
-              ?? priceWrapper.indvdLandPriceList
-              ?? priceWrapper.indvdLandPrice
-              ?? priceWrapper.item;
+    // getIndvdLandPrice 파싱 및 해당 지번 병합
+    const priceWrapper = priceData?.statelndvdLandPrices
+                      ?? priceData?.indvdLandPrices
+                      ?? priceData?.IndvdLandPrices;
+
+    if (priceWrapper && !['INVALID_TYPE', 'ERROR', 'PARAM_REQUIRED'].includes(priceWrapper.resultCode)) {
+      const pi = priceWrapper.field ?? priceWrapper.item;
       const priceItems = Array.isArray(pi) ? pi : (pi ? [pi] : []);
+
       if (priceItems.length > 0) {
-        const latest = priceItems.sort((a, b) => (b.stdrYear ?? b.pblntfDe ?? '').localeCompare(a.stdrYear ?? a.pblntfDe ?? ''))[0];
-        items = items.map(it => ({ ...it, pblntfPclnd: latest.pblntfPclnd, pblntfDe: latest.pblntfDe, stdrYear: latest.stdrYear }));
+        const jiNum = parseInt(ji || '0', 10);
+        const expectedMnnmSlno = jiNum > 0
+          ? `${parseInt(bun, 10)}-${jiNum}`
+          : String(parseInt(bun, 10));
+
+        const sorted = [...priceItems].sort((a, b) =>
+          (b.stdrYear ?? '').localeCompare(a.stdrYear ?? '')
+        );
+        const matched = sorted.find(p => p.mnnmSlno === expectedMnnmSlno) ?? sorted[0];
+
+        if (matched) {
+          items = items.map(it => ({
+            ...it,
+            prposAreaNm:    matched.prposAreaNm    ?? '',
+            prposDstrcNm:   matched.prposDstrcNm   ?? '',
+            ladPblntfPclnd: matched.ladPblntfPclnd ?? '',
+            stdrYear:       matched.stdrYear       ?? '',
+          }));
+        }
       }
     }
 
@@ -75,7 +100,7 @@ export default async function handler(req, res) {
           numOfRows:  parseInt(wrapper.numOfRows ?? numOfRows ?? 100, 10),
         }
       },
-      _priceDebug: priceWrapper ?? priceData
+      _priceDebug: priceWrapper ?? priceData,
     });
   } catch (err) {
     res.status(500).json({ error: true, message: String(err) });

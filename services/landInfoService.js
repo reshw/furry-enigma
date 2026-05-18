@@ -35,11 +35,11 @@ const LandInfoService = {
         regstrSeCodeNm: '대장구분',
         posesnSeCodeNm: '소유구분',
         cnrsPsnCo:      '공유인수',
-        ladFrtlScNm:    '이용상황',
-        lastUpdtDt:     '기준일자',
+        prposAreaNm:    '용도지역',
+        prposDstrcNm:   '용도지구',
+        ladPblntfPclnd: '공시지가(원/㎡)',
         stdrYear:       '공시기준년도',
-        pblntfDe:       '공시일자',
-        pblntfPclnd:    '공시지가(원/㎡)',
+        lastUpdtDt:     '기준일자',
     },
 
     requiredParams: ['sigunguCd', 'bjdongCd', 'bun'],
@@ -56,10 +56,11 @@ const LandInfoService = {
                 item.lndpclAr       = parseFloat(arNum.toFixed(2));
                 item.lndpclArPyeong = parseFloat((arNum * 0.3025).toFixed(2));
             }
-            item.cnrsPsnCo   = item.cnrsPsnCo   || '-';
-            item.ladFrtlScNm = item.ladFrtlScNm || '-';
-            if (item.pblntfPclnd) {
-                item.pblntfPclnd = parseInt(item.pblntfPclnd, 10);
+            item.cnrsPsnCo    = item.cnrsPsnCo    || '-';
+            item.prposAreaNm  = item.prposAreaNm  || '-';
+            item.prposDstrcNm = item.prposDstrcNm || '-';
+            if (item.ladPblntfPclnd) {
+                item.ladPblntfPclnd = parseInt(item.ladPblntfPclnd, 10);
             }
             return item;
         });

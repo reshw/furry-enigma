@@ -19,7 +19,6 @@ const LandPriceService = {
         stdrYear:    '기준년도',
         pblntfDe:    '공시일자',
         pblntfPclnd: '공시지가(원/㎡)',
-        totPrice:    '총공시가(원)',
         lastUpdtDt:  '수정일자',
     },
 
@@ -33,13 +32,7 @@ const LandPriceService = {
     processData(items) {
         return items.map(item => {
             const price = parseInt(item.pblntfPclnd, 10);
-            if (!isNaN(price)) {
-                item.pblntfPclnd = price;
-                const ar = parseFloat(item.lndpclAr);
-                if (!isNaN(ar)) {
-                    item.totPrice = Math.round(price * ar);
-                }
-            }
+            if (!isNaN(price)) item.pblntfPclnd = price;
             return item;
         });
     },
