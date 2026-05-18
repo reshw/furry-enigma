@@ -13,6 +13,10 @@ class DownloadManager {
             return { t: 'b', v: value };
         }
 
+        if (typeof value === 'number') {
+            return { t: 'n', v: value };
+        }
+
         if (value instanceof Date) {
             return { t: 'd', v: value };
         }
@@ -86,6 +90,7 @@ class DownloadManager {
         }
 
         if (window.locationModule && !window.locationModule.validateLocationSelection()) {
+            window.UIManager?.showToast('지역을 먼저 선택해주세요.', 'error');
             return;
         }
 
@@ -130,7 +135,8 @@ class DownloadManager {
 
         const names = {
             'floor-outline': '층별개요',
-            'exclusive-area': '전유공유면적'
+            'exclusive-area': '전유공유면적',
+            'building-title': '표제부'
         };
         const prefix = type === 'all' ? '전체_' : '';
         const serviceName = names[service.id] || '조회결과';

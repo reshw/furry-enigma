@@ -66,6 +66,7 @@ const ExclusiveAreaService = {
         hoNm: '호명칭',
         mainPurpsCdNm: '주용도',
         area: '면적(㎡)',
+        areaPyeong: '면적(평)',
         flrNoNm: '층',
         exposPubuseGbCdNm: '전유공용구분',
         etcPurps: '기타용도'
@@ -84,11 +85,10 @@ const ExclusiveAreaService = {
     processData(items) {
         return items.map(item => {
             // 면적 데이터 가공
-            if (item.area) {
-                const areaNum = parseFloat(item.area);
-                if (!isNaN(areaNum)) {
-                    item.area = areaNum.toFixed(2);
-                }
+            const areaNum = parseFloat(item.area);
+            if (!isNaN(areaNum)) {
+                item.area = parseFloat(areaNum.toFixed(2));
+                item.areaPyeong = parseFloat((areaNum * 0.3025).toFixed(2));
             }
             
             // 전유공용구분 텍스트 개선

@@ -35,7 +35,7 @@ class APIManager {
     if (!service) throw new Error('No service selected');
 
     if (window.locationModule && !window.locationModule.validateLocationSelection()) {
-      throw new Error('행정구역을 먼저 검색하고 선택해 주세요.');
+      throw new Error('지역을 선택해주세요.\n• 행정구역 검색 후 목록에서 선택\n• 도로명주소 자동입력 후 결과에서 선택');
     }
 
     if (window.AppState) {
@@ -67,10 +67,17 @@ class APIManager {
       if (errors.length > 0) throw new Error(errors.join('\n'));
     }
 
-    const proxyBase = this.buildProxyBaseWithEndpoint(service.endpoint);
-    const url = proxyBase
-      ? `${proxyBase}&${params.toString()}`
-      : `${this.CONFIG.BASE_API_URL}/${service.endpoint}?${params.toString()}`;
+    let url;
+    if (typeof service.getProxyUrl === 'function') {
+      const paramObj = {};
+      for (const [k, v] of params.entries()) paramObj[k] = v;
+      url = service.getProxyUrl(paramObj);
+    } else {
+      const proxyBase = this.buildProxyBaseWithEndpoint(service.endpoint);
+      url = proxyBase
+        ? `${proxyBase}&${params.toString()}`
+        : `${this.CONFIG.BASE_API_URL}/${service.endpoint}?${params.toString()}`;
+    }
 
     try {
       const json = await this.safeFetchJson(url);
@@ -99,19 +106,29 @@ class APIManager {
   }
 
   static async fetchAllDataForService(service) {
-    if (!service?.endpoint) {
+    if (!service?.endpoint && typeof service.getProxyUrl !== 'function') {
       throw new Error('조회 endpoint가 없는 서비스입니다.');
     }
 
-    const proxyBase = this.buildProxyBaseWithEndpoint(service.endpoint);
-    const baseUrl = proxyBase || `${this.CONFIG.BASE_API_URL}/${service.endpoint}`;
+    const proxyBase = service.endpoint ? this.buildProxyBaseWithEndpoint(service.endpoint) : null;
+    const baseUrl = proxyBase || (service.endpoint ? `${this.CONFIG.BASE_API_URL}/${service.endpoint}` : null);
     const params = this.buildParams(service, 1, true);
+
+    const buildUrl = (pg) => {
+      params.set('pageNo', String(pg));
+      if (typeof service.getProxyUrl === 'function') {
+        const paramObj = {};
+        for (const [k, v] of params.entries()) paramObj[k] = v;
+        return service.getProxyUrl(paramObj);
+      }
+      return proxyBase ? `${baseUrl}&${params.toString()}` : `${baseUrl}?${params.toString()}`;
+    };
 
     try {
       params.set('numOfRows', '100');
       params.set('pageNo', '1');
 
-      const firstUrl = proxyBase ? `${baseUrl}&${params.toString()}` : `${baseUrl}?${params.toString()}`;
+      const firstUrl = buildUrl(1);
       const firstJson = await this.safeFetchJson(firstUrl);
       const firstBody = firstJson?.response?.body;
       if (!firstBody?.items) {
@@ -128,8 +145,7 @@ class APIManager {
       allItems = allItems.concat(firstItems);
 
       for (let page = 2; page <= totalPages; page += 1) {
-        params.set('pageNo', String(page));
-        const pageUrl = proxyBase ? `${baseUrl}&${params.toString()}` : `${baseUrl}?${params.toString()}`;
+        const pageUrl = buildUrl(page);
 
         try {
           const json = await this.safeFetchJson(pageUrl);

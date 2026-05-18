@@ -49,6 +49,7 @@ const FloorOutlineService = {
         dongNm: '동명칭',
         flrNoNm: '층',
         area: '면적(㎡)',
+        areaPyeong: '면적(평)',
         mainPurpsCdNm: '주용도',
         etcPurps: '기타용도'
     },
@@ -65,9 +66,10 @@ const FloorOutlineService = {
     // 데이터 후처리 (필요시)
     processData(items) {
         return items.map(item => {
-            // 필요한 경우 데이터 가공
-            if (item.area) {
-                item.area = parseFloat(item.area).toFixed(2);
+            const areaNum = parseFloat(item.area);
+            if (!isNaN(areaNum)) {
+                item.area = parseFloat(areaNum.toFixed(2));
+                item.areaPyeong = parseFloat((areaNum * 0.3025).toFixed(2));
             }
             return item;
         });

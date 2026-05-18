@@ -115,7 +115,7 @@ class App {
 
         document.addEventListener('keypress', (e) => {
             if (e.key !== 'Enter') return;
-            if (e.target.id === 'regionSearch' || e.target.id === 'jibun') return;
+            if (e.target.id === 'unifiedAddrInput' || e.target.id === 'jibun' || e.target.id === 'roadAddrInput') return;
             if (e.target.tagName === 'TEXTAREA' && !e.ctrlKey && !e.metaKey) return;
 
             if (e.target.matches('input[type="text"], input[type="number"], select')) {

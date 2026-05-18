@@ -1,348 +1,142 @@
-/**
- * LocationModule.js (MVP Flat List)
- * - 검색어 포함 결과를 "플랫 리스트"로 모두 보여줌
- * - 항목에 타입 배지(동/읍/면/리), 코드, 브레드크럼(원문명) 표시
- * - 선택 버튼은 항상 보임 (opacity 트릭 제거)
- * - 라이트 필터(전체/동/리), 간단 정렬(정확/접두/부분)
- */
 class LocationModule {
   constructor() {
-    this.CONFIG = {
-      PAGE_SIZE: 100 // API numOfRows=300이라도 렌더는 적당히 나눠도 됨(여기선 한 번에 표시)
-    };
-
-    this.state = {
-      rawRows: [],
-      items: [],
-      filtered: [],
-      selection: null,
-      typeFilter: 'all', // 'all' | 'dong' | 'ri'
-      query: ''
-    };
-
+    this.state = { selection: null };
     this.initEventListeners();
   }
 
   validateLocationSelection() {
     const sigungu = document.getElementById('sigunguCd')?.value.trim() || '';
     const bjdong  = document.getElementById('bjdongCd')?.value.trim() || '';
-  
-    if (!sigungu || !bjdong) {
-      this.showToast('❗ 행정구역을 먼저 선택해주세요!', 'error');
-      const statusDiv  = document.getElementById('regionSearchStatus');
-      const resultsDiv = document.getElementById('regionResults');
-      if (statusDiv) {
-        statusDiv.innerHTML = '⚠️ <strong>지역을 선택해주세요.</strong> 검색 후 리스트에서 하나를 선택하세요.';
-        statusDiv.style.display = 'block';
-      }
-      if (resultsDiv) resultsDiv.style.display = 'block';
-      return false;
-    }
-    return true;
-  }
-
-  hasLocationSelection() {
-    const sigungu = document.getElementById('sigunguCd')?.value.trim() || '';
-    const bjdong = document.getElementById('bjdongCd')?.value.trim() || '';
     return Boolean(sigungu && bjdong);
   }
 
-  async searchRegionByName(term) {
-    const keyword = String(term || '').trim();
-    if (!keyword) return [];
-
-    const regurl = `/api/region-proxy?type=xml&pageNo=1&numOfRows=300&flag=Y&locatadd_nm=${encodeURIComponent(keyword)}`;
-    const res = await fetch(regurl);
-    const text = await res.text();
-    const xml = new DOMParser().parseFromString(text, 'text/xml');
-    const rows = Array.from(xml.querySelectorAll('row'));
-    const items = rows.map((r) => this.rowToItem(r));
-
-    const uniq = new Map();
-    for (const item of items) {
-      uniq.set(item.fullCode, item);
-    }
-
-    return Array.from(uniq.values())
-      .map((item) => ({ ...item, score: this.scoreItem(keyword, item) }))
-      .sort((a, b) => b.score - a.score || a.displayName.localeCompare(b.displayName, 'ko'));
+  hasLocationSelection() {
+    return this.validateLocationSelection();
   }
-
-  applyResolvedLocation(item, meta = {}) {
-    if (!item) return;
-
-    this.state.selection = {
-      label: item.displayName,
-      sigungu: item.sigungu,
-      bjdong: item.bjdong,
-      code: item.fullCode,
-      type: item.typeLabel
-    };
-
-    const sigunguEl = document.getElementById('sigunguCd');
-    const bjdongEl = document.getElementById('bjdongCd');
-    if (sigunguEl) sigunguEl.value = item.sigungu;
-    if (bjdongEl) bjdongEl.value = item.bjdong;
-
-    if (meta.jibun) {
-      this.applyJibunValue(meta.jibun);
-    }
-
-    const selectedDiv = document.getElementById('selectedRegion');
-    if (selectedDiv) {
-      const extra = meta.jibun ? ` | 지번: ${meta.jibun}` : '';
-      const sourceText = meta.source ? `<br><small>${meta.source}</small>` : '';
-      selectedDiv.innerHTML = `
-        <span class="check-icon">✅</span>
-        <div>
-          <strong>선택완료:</strong> [${item.typeLabel}] ${item.displayName}${extra}<br>
-          <small>시군구 ${item.sigungu} | 법정동 ${item.bjdong} | 코드: ${item.fullCode}</small>
-          ${sourceText}
-        </div>
-      `;
-      selectedDiv.style.display = 'flex';
-    }
-  }
-
-  applyJibunValue(rawValue) {
-    const jibunInput = document.getElementById('jibun');
-    if (jibunInput) {
-      jibunInput.value = rawValue;
-    }
-
-    const normalized = String(rawValue || '').trim();
-    if (!normalized) return;
-
-    const bunEl = document.getElementById('bun');
-    const jiEl = document.getElementById('ji');
-    const previewDiv = document.getElementById('jibunPreview');
-
-    if (normalized.includes('-')) {
-      const [bunRaw, jiRaw] = normalized.split('-');
-      if (bunEl) bunEl.value = (bunRaw || '').padStart(4, '0');
-      if (jiEl) jiEl.value = (jiRaw || '').padStart(4, '0');
-      if (previewDiv) {
-        previewDiv.innerHTML = `🔎 <strong>${normalized}번지</strong> 조회`;
-      }
-      return;
-    }
-
-    if (bunEl) bunEl.value = normalized.padStart(4, '0');
-    if (jiEl) jiEl.value = '';
-    if (previewDiv) {
-      previewDiv.innerHTML = `🔎 <strong>${normalized}번지 전체</strong> 조회`;
-    }
-  }
-  
 
   initEventListeners() {
     const $ = (id) => document.getElementById(id);
 
-    // 검색 버튼 / Enter
-    $('searchRegionBtn')?.addEventListener('click', () => this.searchRegion());
-    $('regionSearch')?.addEventListener('keypress', (e) => {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        this.searchRegion();
-      }
+    // Mode pill toggle
+    document.querySelectorAll('input[name="addrMode"]').forEach(radio => {
+      radio.addEventListener('change', (e) => {
+        const isRoad = e.target.value === 'road';
+        const jibunContainer = $('jibunSearchContainer');
+        const roadContainer  = $('roadSearchContainer');
+        const jibunResults   = $('unifiedAddrResults');
+        const roadResults    = $('roadSearchResults');
+        if (jibunContainer) jibunContainer.style.display = isRoad ? 'none' : '';
+        if (roadContainer)  roadContainer.style.display  = isRoad ? ''     : 'none';
+        if (jibunResults)   { jibunResults.innerHTML = '';  jibunResults.style.display  = 'none'; }
+        if (roadResults)    { roadResults.innerHTML  = '';  roadResults.style.display   = 'none'; }
+      });
     });
 
-    // 지번 입력 관련 기존 로직 유지
+    // Jibun search
+    $('unifiedAddrSearchBtn')?.addEventListener('click', () => this._searchByJibun());
+    $('unifiedAddrInput')?.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); this._searchByJibun(); }
+    });
+
+    // Road address search
+    $('roadSearchBtn')?.addEventListener('click', () => this._searchByRoad());
+    $('roadAddrInput')?.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); this._searchByRoad(); }
+    });
+
+    // Jibun input
     $('jibun')?.addEventListener('input', (e) => this.handleJibunInput(e));
     $('jibun')?.addEventListener('keypress', (e) => {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        const searchBtn = $('searchButton') || $('searchRegionBtn');
-        if (searchBtn && !searchBtn.disabled) searchBtn.click();
-      }
+      if (e.key !== 'Enter') return;
+      e.preventDefault();
+      const btn = $('searchButton');
+      if (btn && !btn.disabled) btn.click();
     });
 
-    // 도움말 토글
+    // Jibun help tooltip
     $('jibunHelpToggle')?.addEventListener('click', (e) => this.toggleHelp(e));
     document.addEventListener('click', (e) => this.handleOutsideClick(e));
 
-    // 타입 필터 칩 (전체/동/리)
-    $('chipAll')?.addEventListener('click', () => this.applyTypeFilter('all'));
-    $('chipDong')?.addEventListener('click', () => this.applyTypeFilter('dong'));
-    $('chipRi')?.addEventListener('click', () => this.applyTypeFilter('ri'));
-
-    // 수동 법정동코드 입력 모드
-    const manualSigungu = document.getElementById('sigunguCdManual');
-    const manualBjdong = document.getElementById('bjdongCdManual');
-    const applyManualBtn = document.getElementById('applyManualCodes');
-
-    if (applyManualBtn) {
-      applyManualBtn.addEventListener('click', () => {
-        const sigunguCd = manualSigungu?.value.trim();
-        const bjdongCd = manualBjdong?.value.trim();
-
-        if (!sigunguCd || !bjdongCd) {
-          this.showToast('❗ 코드 두 개 모두 입력해주세요.', 'error');
-          return;
-        }
-
-        // hidden input에 반영 (기존 호환)
-        document.getElementById('sigunguCd').value = sigunguCd;
-        document.getElementById('bjdongCd').value = bjdongCd;
-
-        // 선택 배지 표시
-        const selectedDiv = document.getElementById('selectedRegion');
-        selectedDiv.innerHTML = `
+    // Manual code input
+    $('applyManualCodes')?.addEventListener('click', () => {
+      const sigunguCd = $('sigunguCdManual')?.value.trim();
+      const bjdongCd  = $('bjdongCdManual')?.value.trim();
+      if (!sigunguCd || !bjdongCd) {
+        this.showToast('❗ 코드 두 개 모두 입력해주세요.', 'error');
+        return;
+      }
+      $('sigunguCd').value = sigunguCd;
+      $('bjdongCd').value  = bjdongCd;
+      const sel = $('selectedRegion');
+      if (sel) {
+        sel.innerHTML = `
           <span class="check-icon">✅</span>
-          <div>
-            <strong>수동입력 완료:</strong><br>
-            시군구코드: ${sigunguCd} | 법정동코드: ${bjdongCd}
-          </div>`;
-        selectedDiv.style.display = 'flex';
-
-        this.showToast('✅ 수동 코드가 적용되었습니다!', 'success');
-      });
-    }
-
+          <div><strong>수동입력 완료:</strong><br>
+          시군구코드: ${sigunguCd} | 법정동코드: ${bjdongCd}</div>`;
+        sel.style.display = 'flex';
+      }
+      this.showToast('✅ 수동 코드가 적용되었습니다!', 'success');
+    });
   }
 
-  /* ---------- 검색 ---------- */
-  async searchRegion() {
-    const input = document.getElementById('regionSearch');
-    const term = (input?.value || '').trim();
-    if (!term) return this.showToast('동/리/지명을 입력해주세요.', 'error');
+  /* ── 지번 검색 ── */
+  async _searchByJibun() {
+    const raw = (document.getElementById('unifiedAddrInput')?.value || '').trim();
+    if (!raw) return this.showToast('주소를 입력해주세요.', 'error');
 
-    const btn = document.getElementById('searchRegionBtn');
-    const statusDiv = document.getElementById('regionSearchStatus');
-    const resultsDiv = document.getElementById('regionResults');
-    const selectedDiv = document.getElementById('selectedRegion');
-    const summaryBar = document.getElementById('summaryBar');
+    const tokens  = raw.split(/\s+/);
+    const lastTok = tokens[tokens.length - 1];
+    let jibunPart = '';
+    let dongQuery = raw;
+    if (/^\d+(-\d+)?$/.test(lastTok)) {
+      jibunPart = lastTok;
+      dongQuery = tokens.slice(0, -1).join(' ').trim();
+    }
+    if (!dongQuery) return this.showToast('동/리 이름을 포함해 입력해주세요.', 'error');
 
-    this.state.query = term;
-    btn.disabled = true; btn.textContent = '검색중...'; btn.classList.add('loading');
-    statusDiv.style.display = 'none';
-    selectedDiv.style.display = 'none';
-    resultsDiv.style.display = 'none';
-    resultsDiv.innerHTML = '';
-    summaryBar.style.display = 'none';
+    await this._doRegionSearch(dongQuery, jibunPart);
+  }
+
+  async _doRegionSearch(dongQuery, jibunPart) {
+    const btn        = document.getElementById('unifiedAddrSearchBtn');
+    const resultsDiv = document.getElementById('unifiedAddrResults');
+    btn.disabled = true; btn.textContent = '검색중...';
+    if (resultsDiv) { resultsDiv.innerHTML = ''; resultsDiv.style.display = 'none'; }
 
     try {
-      const regurl = `/api/region-proxy?type=xml&pageNo=1&numOfRows=300&flag=Y&locatadd_nm=${encodeURIComponent(term)}`;
-      const res = await fetch(regurl);
+      const res  = await fetch(`/api/region-proxy?type=xml&pageNo=1&numOfRows=300&flag=Y&locatadd_nm=${encodeURIComponent(dongQuery)}`);
       const text = await res.text();
-      const xml = new DOMParser().parseFromString(text, 'text/xml');
+      const xml  = new DOMParser().parseFromString(text, 'text/xml');
       const rows = Array.from(xml.querySelectorAll('row'));
 
       if (rows.length === 0) {
-        this.renderEmpty('🔍 검색 결과가 없습니다. 예) 도곡동 / 도곡리');
+        this._showEmpty(resultsDiv, '검색 결과가 없습니다.');
         return;
       }
 
-      // 1) 평면 아이템으로 변환
-      const items = rows.map((r) => this.rowToItem(r));
-
-      // 2) 중복 제거(코드 기준)
-      const uniq = new Map();
+      const items  = rows.map(r => this.rowToItem(r));
+      const uniq   = new Map();
       for (const it of items) uniq.set(it.fullCode, it);
-      const deduped = Array.from(uniq.values());
+      const sorted = Array.from(uniq.values())
+        .map(it => ({ ...it, score: this.scoreItem(dongQuery, it) }))
+        .sort((a, b) => b.score - a.score || a.displayName.localeCompare(b.displayName, 'ko'));
 
-      // 3) 간단 랭킹 점수 계산(정확>접두>부분)
-      const scored = deduped.map((it) => ({ ...it, score: this.scoreItem(term, it) }))
-                            .sort((a, b) => b.score - a.score || a.displayName.localeCompare(b.displayName, 'ko'));
-
-      this.state.rawRows = rows;
-      this.state.items = scored;
-      this.applyTypeFilter(this.state.typeFilter, { silent: true }); // 현재 선택된 필터 유지 적용
-
-      // 요약바
-      const total = scored.length;
-      const countDong = scored.filter(x => x.kindGroup === 'dong').length;
-      const countRi = scored.filter(x => x.kindGroup === 'ri').length;
-      document.getElementById('summaryText').textContent =
-        `${term} 검색 결과 ${total}건 (동 ${countDong} · 리 ${countRi})`;
-      document.getElementById('summaryBar').style.display = 'flex';
-
-      statusDiv.style.display = 'block';
-      statusDiv.textContent = '🔍 결과가 로드되었습니다.';
+      this._renderJibunResults(sorted, jibunPart);
     } catch (err) {
-      this.renderEmpty('검색 오류가 발생했습니다. 잠시 후 다시 시도해주세요.');
       this.showToast('검색 오류: ' + err.message, 'error');
     } finally {
-      btn.disabled = false; btn.textContent = '검색'; btn.classList.remove('loading');
+      btn.disabled = false; btn.textContent = '검색';
     }
   }
 
-  rowToItem(r) {
-    const name = r.querySelector('locatadd_nm')?.textContent?.trim() || '';
-    const sido = r.querySelector('sido_cd')?.textContent || '';
-    const sgg  = r.querySelector('sgg_cd')?.textContent || '';
-    const umd  = r.querySelector('umd_cd')?.textContent || '';
-    const ri   = r.querySelector('ri_cd')?.textContent || '00';
-
-    // 코드 구성
-    const sigungu = `${sido}${sgg}`;       // 시군구 코드 (5자리*2 형태일 수 있으나 API 기준 유지)
-    const bjdong  = `${umd}${ri}`;         // 법정동(읍면동+리)
-    const fullCode = `${sido}${sgg}${umd}${ri}`;
-
-    // 타입 라벨(리/동/읍/면 파악)
-    const kindGroup = (ri !== '00') ? 'ri' : 'dong';
-    const tail = name.slice(-1);
-    const typeByName = (ri !== '00') ? '리' : (tail === '동' ? '동' : (tail === '읍' ? '읍' : (tail === '면' ? '면' : '동')));
-
-    return {
-      displayName: name,      // UI 표기 이름 (API 원문명 그대로 사용)
-      kindGroup,              // 'dong' | 'ri'
-      typeLabel: typeByName,  // '동' | '읍' | '면' | '리'
-      sigungu, bjdong, fullCode
-    };
-  }
-
-  scoreItem(term, it) {
-    const t = term.trim();
-    const name = it.displayName;
-    if (!t || !name) return 0;
-    if (name === t) return 300;                 // 완전일치
-    if (name.startsWith(t)) return 200;         // 접두일치
-    if (name.includes(t)) return 100;           // 부분일치
-    // 간단 초성 매칭(ㄷㄱ -> 도곡) 등은 필요시 추가
-    return 0;
-  }
-
-  /* ---------- 필터링 & 렌더 ---------- */
-  applyTypeFilter(type, opts = {}) {
-    this.state.typeFilter = type; // 'all' | 'dong' | 'ri'
-    const chips = ['chipAll', 'chipDong', 'chipRi'];
-    chips.forEach(id => {
-      const el = document.getElementById(id);
-      if (!el) return;
-      el.classList.remove('active');
-    });
-    if (type === 'all') document.getElementById('chipAll')?.classList.add('active');
-    if (type === 'dong') document.getElementById('chipDong')?.classList.add('active');
-    if (type === 'ri') document.getElementById('chipRi')?.classList.add('active');
-
-    let list = this.state.items || [];
-    if (type === 'dong') list = list.filter(x => x.kindGroup === 'dong');
-    if (type === 'ri') list = list.filter(x => x.kindGroup === 'ri');
-
-    this.state.filtered = list;
-    this.renderList(list);
-
-    if (!opts.silent) {
-      const t = this.state.query || '';
-      const total = (this.state.items || []).length;
-      const sub = (type === 'all') ? '' : (type === 'dong' ? ' (동만 보기)' : ' (리만 보기)');
-      document.getElementById('summaryText').textContent =
-        `${t} 검색 결과 ${total}건${sub}`;
-    }
-  }
-
-  renderList(list) {
-    const resultsDiv = document.getElementById('regionResults');
+  _renderJibunResults(items, jibunPart) {
+    const resultsDiv = document.getElementById('unifiedAddrResults');
+    if (!resultsDiv) return;
     resultsDiv.innerHTML = '';
+    resultsDiv.style.display = 'block';
 
-    if (!list || list.length === 0) {
-      this.renderEmpty('검색 결과가 없습니다.', resultsDiv);
-      return;
-    }
-
-    for (const it of list) {
-      const row = document.createElement('div');
+    items.forEach(it => {
+      const row  = document.createElement('div');
       row.className = 'result-item';
 
       const main = document.createElement('div');
@@ -354,144 +148,274 @@ class LocationModule {
 
       const nameEl = document.createElement('div');
       nameEl.className = 'place-name';
-      nameEl.textContent = it.displayName;
+      nameEl.textContent = jibunPart ? `${it.displayName} ${jibunPart}` : it.displayName;
+
+      const sub = document.createElement('div');
+      sub.className = 'result-sub';
+      sub.innerHTML = `코드 <span class="code-pill">${it.fullCode}</span>`;
 
       main.appendChild(badge);
       main.appendChild(nameEl);
 
-      const btn = document.createElement('button');
-      btn.className = 'select-btn';
-      btn.textContent = '선택';
-      btn.addEventListener('click', () => this.selectRegion(it));
-
-      const sub = document.createElement('div');
-      sub.className = 'result-sub';
-      sub.innerHTML = `코드 <span class="code-pill">${it.fullCode}</span> · 시군구:${it.sigungu} · 법정동:${it.bjdong}`;
+      const selectBtn = document.createElement('button');
+      selectBtn.className = 'select-btn';
+      selectBtn.textContent = '선택';
+      selectBtn.addEventListener('click', () => this._applyJibunSelection(it, jibunPart));
 
       row.appendChild(main);
-      row.appendChild(btn);
+      row.appendChild(selectBtn);
       row.appendChild(sub);
       resultsDiv.appendChild(row);
-    }
-
-    resultsDiv.style.display = 'block';
+    });
   }
 
-  renderEmpty(message, target = document.getElementById('regionResults')) {
-    target.innerHTML = `<div class="empty-state">${message}</div>`;
-    target.style.display = 'block';
-    const statusDiv = document.getElementById('regionSearchStatus');
-    if (statusDiv) {
-      statusDiv.style.display = 'block';
-      statusDiv.textContent = '검색 결과 없음';
-    }
-  }
-
-  kindToBadgeClass(typeLabel) {
-    if (typeLabel === '동') return 'badge-dong';
-    if (typeLabel === '읍') return 'badge-eup';
-    if (typeLabel === '면') return 'badge-myeon';
-    return 'badge-ri'; // 리
-    }
-
-  /* ---------- 선택 ---------- */
-  selectRegion(item) {
-    // 상태 반영
-    this.state.selection = {
-      label: item.displayName,
-      sigungu: item.sigungu,
-      bjdong: item.bjdong,
-      code: item.fullCode,
-      type: item.typeLabel
-    };
-
-    // hidden input에 주입 (기존 호환)
-    const sigunguEl = document.getElementById('sigunguCd');
-    const bjdongEl = document.getElementById('bjdongCd');
-    if (sigunguEl) sigunguEl.value = item.sigungu;
-    if (bjdongEl) bjdongEl.value = item.bjdong;
-
-    // 선택 배지 표시
-    const selectedDiv = document.getElementById('selectedRegion');
-    selectedDiv.innerHTML = `
-      <span class="check-icon">✅</span>
-      <div>
-        <strong>선택완료:</strong> [${item.typeLabel}] ${item.displayName}<br>
-        <small>시군구: ${item.sigungu} | 법정동: ${item.bjdong} | 코드: ${item.fullCode}</small>
-      </div>
-    `;
-    selectedDiv.style.display = 'flex';
-
-    // ✅ NEW: 선택 후 리스트/요약/상태 감추기
-    const resultsDiv = document.getElementById('regionResults');
-    const statusDiv  = document.getElementById('regionSearchStatus');
-    const summaryBar = document.getElementById('summaryBar'); // 없으면 무시됨
+  _applyJibunSelection(item, jibunPart) {
+    this.applyResolvedLocation(item, {
+      jibun: jibunPart,
+      source: jibunPart ? `지번: ${item.displayName} ${jibunPart}` : undefined,
+    });
+    const resultsDiv = document.getElementById('unifiedAddrResults');
     if (resultsDiv) { resultsDiv.innerHTML = ''; resultsDiv.style.display = 'none'; }
-    if (statusDiv)  { statusDiv.style.display  = 'none'; }
-    if (summaryBar) { summaryBar.style.display = 'none'; }
-
-    this.showToast('✅ 지역이 선택되었습니다!', 'success');
-     // 선택 배지로 초점 이동(선택 직후 깔끔)
-    selectedDiv.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    this.showToast('✅ 지역이 선택되었습니다.', 'success');
   }
 
-  /* ---------- 기존 유지: 지번/도움말 ---------- */
-  handleJibunInput(e) {
-    const val = e.target.value.trim();
+  /* ── 도로명 검색 ── */
+  async _searchByRoad() {
+    const keyword = (document.getElementById('roadAddrInput')?.value || '').trim();
+    if (!keyword) return this.showToast('도로명주소를 입력해주세요.', 'error');
+
+    const btn        = document.getElementById('roadSearchBtn');
+    const resultsDiv = document.getElementById('roadSearchResults');
+    btn.disabled = true; btn.textContent = '검색중...';
+    if (resultsDiv) { resultsDiv.innerHTML = ''; resultsDiv.style.display = 'none'; }
+
+    try {
+      const res = await fetch(`/api/juso-proxy?keyword=${encodeURIComponent(keyword)}`);
+      if (!res.ok) throw new Error(`서버 오류 ${res.status}`);
+      const data = await res.json();
+
+      if (data?.error) throw new Error(data.error);
+      const errorCode = data?.results?.common?.errorCode;
+      if (errorCode && errorCode !== '0') {
+        throw new Error(`주소 API 오류: ${data?.results?.common?.errorMessage || errorCode}`);
+      }
+
+      const list = data?.results?.juso || [];
+      if (list.length === 0) {
+        this._showEmpty(resultsDiv, '검색 결과가 없습니다. 건물번호까지 포함한 전체 도로명주소를 입력해보세요.');
+        return;
+      }
+      this._renderRoadResults(list);
+    } catch (err) {
+      this.showToast('검색 오류: ' + err.message, 'error');
+    } finally {
+      btn.disabled = false; btn.textContent = '검색';
+    }
+  }
+
+  _renderRoadResults(list) {
+    const resultsDiv = document.getElementById('roadSearchResults');
+    if (!resultsDiv) return;
+    resultsDiv.innerHTML = '';
+    resultsDiv.style.display = 'block';
+
+    list.forEach(juso => {
+      const row  = document.createElement('div');
+      row.className = 'result-item';
+
+      const main = document.createElement('div');
+      main.className = 'result-main';
+
+      const nameEl = document.createElement('div');
+      nameEl.className = 'place-name';
+      nameEl.textContent = juso.roadAddr;
+
+      const subEl = document.createElement('div');
+      subEl.className = 'result-sub';
+      subEl.textContent = juso.jibunAddr;
+
+      main.appendChild(nameEl);
+      main.appendChild(subEl);
+
+      const selectBtn = document.createElement('button');
+      selectBtn.className = 'select-btn';
+      selectBtn.textContent = '선택';
+      selectBtn.addEventListener('click', () => this._applyRoadSelection(juso));
+
+      row.appendChild(main);
+      row.appendChild(selectBtn);
+      resultsDiv.appendChild(row);
+    });
+  }
+
+  _applyRoadSelection(juso) {
+    const admCd    = juso.admCd || '';
+    const sigungu  = admCd.slice(0, 5);
+    const bjdong   = admCd.slice(5, 10);
+    const bunNum   = juso.lnbrMnnm || '';
+    const jiNum    = juso.lnbrSlno || '0';
+    const jibunStr = (jiNum && String(jiNum) !== '0') ? `${bunNum}-${jiNum}` : String(bunNum);
+
+    this.applyResolvedLocation(
+      { displayName: juso.jibunAddr || juso.roadAddr, sigungu, bjdong, fullCode: admCd, typeLabel: '도로명' },
+      { jibun: jibunStr, source: `📮 도로명: ${juso.roadAddr}` }
+    );
+
+    const resultsDiv = document.getElementById('roadSearchResults');
+    if (resultsDiv) { resultsDiv.innerHTML = ''; resultsDiv.style.display = 'none'; }
+    const roadInput = document.getElementById('roadAddrInput');
+    if (roadInput) roadInput.value = '';
+
+    this.showToast('✅ 주소가 자동입력되었습니다.', 'success');
+
+    // Async coords fetch — fire-and-forget, failure is silent
+    this._fetchAndStoreCoords(juso.roadAddr).catch(() => {});
+  }
+
+  async _fetchAndStoreCoords(roadAddr) {
+    if (!roadAddr) return;
+    try {
+      const res  = await fetch(`/api/vworld-proxy?address=${encodeURIComponent(roadAddr)}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      const pt   = data?.response?.result?.point;
+      if (!pt?.x || !pt?.y) return;
+      const latEl = document.getElementById('addrLat');
+      const lonEl = document.getElementById('addrLon');
+      if (latEl) latEl.value = pt.y;
+      if (lonEl) lonEl.value = pt.x;
+    } catch (_) { /* coords are optional */ }
+  }
+
+  /* ── 공통 적용 ── */
+  applyResolvedLocation(item, meta = {}) {
+    if (!item) return;
+    this.state.selection = { label: item.displayName, sigungu: item.sigungu, bjdong: item.bjdong, code: item.fullCode, type: item.typeLabel };
+
+    const sigunguEl = document.getElementById('sigunguCd');
+    const bjdongEl  = document.getElementById('bjdongCd');
+    if (sigunguEl) sigunguEl.value = item.sigungu;
+    if (bjdongEl)  bjdongEl.value  = item.bjdong;
+
+    if (meta.jibun) this.applyJibunValue(meta.jibun);
+
+    const sel = document.getElementById('selectedRegion');
+    if (sel) {
+      const extra      = meta.jibun  ? ` | 지번: ${meta.jibun}` : '';
+      const sourceText = meta.source ? `<br><small>${meta.source}</small>` : '';
+      sel.innerHTML = `
+        <span class="check-icon">✅</span>
+        <div>
+          <strong>선택완료:</strong> [${item.typeLabel}] ${item.displayName}${extra}<br>
+          <small>시군구 ${item.sigungu} | 법정동 ${item.bjdong} | 코드: ${item.fullCode}</small>
+          ${sourceText}
+        </div>`;
+      sel.style.display = 'flex';
+    }
+  }
+
+  applyJibunValue(rawValue) {
+    const jibunInput = document.getElementById('jibun');
+    if (jibunInput) jibunInput.value = rawValue;
+
+    const normalized  = String(rawValue || '').trim();
+    if (!normalized) return;
+
+    const bunEl      = document.getElementById('bun');
+    const jiEl       = document.getElementById('ji');
     const previewDiv = document.getElementById('jibunPreview');
+
+    if (normalized.includes('-')) {
+      const [bunRaw, jiRaw] = normalized.split('-');
+      if (bunEl) bunEl.value = (bunRaw || '').padStart(4, '0');
+      if (jiEl)  jiEl.value  = (jiRaw  || '').padStart(4, '0');
+      if (previewDiv) previewDiv.innerHTML = `🔎 <strong>${normalized}번지</strong> 조회`;
+    } else {
+      if (bunEl) bunEl.value = normalized.padStart(4, '0');
+      if (jiEl)  jiEl.value  = '';
+      if (previewDiv) previewDiv.innerHTML = `🔎 <strong>${normalized}번지 전체</strong> 조회`;
+    }
+  }
+
+  handleJibunInput(e) {
+    const val        = e.target.value.trim();
+    const previewDiv = document.getElementById('jibunPreview');
+    const bunEl      = document.getElementById('bun');
+    const jiEl       = document.getElementById('ji');
 
     if (!val) {
       if (previewDiv) previewDiv.textContent = '';
-      const bun = document.getElementById('bun');
-      const ji = document.getElementById('ji');
-      if (bun) bun.value = '';
-      if (ji) ji.value = '';
+      if (bunEl) bunEl.value = '';
+      if (jiEl)  jiEl.value  = '';
       return;
     }
 
-    const bunEl = document.getElementById('bun');
-    const jiEl = document.getElementById('ji');
-
     if (val.includes('-')) {
       const [bunRaw, jiRaw] = val.split('-');
-      const bun = (bunRaw || '').padStart(4, '0');
-      const ji = (jiRaw || '').padStart(4, '0');
-      if (bunEl) bunEl.value = bun;
-      if (jiEl) jiEl.value = ji;
+      if (bunEl) bunEl.value = (bunRaw || '').padStart(4, '0');
+      if (jiEl)  jiEl.value  = (jiRaw  || '').padStart(4, '0');
       if (previewDiv) {
-        previewDiv.innerHTML = ji === '0000'
+        previewDiv.innerHTML = (jiRaw || '').padStart(4, '0') === '0000'
           ? `🎯 <strong>${bunRaw}번지만</strong> 조회`
           : `🎯 <strong>${bunRaw}-${jiRaw}번지</strong> 조회`;
       }
     } else {
-      const bun = val.padStart(4, '0');
-      if (bunEl) bunEl.value = bun;
-      if (jiEl) jiEl.value = '';
+      if (bunEl) bunEl.value = val.padStart(4, '0');
+      if (jiEl)  jiEl.value  = '';
       if (previewDiv) previewDiv.innerHTML = `🏘️ <strong>${val}번지 전체</strong> 조회`;
     }
   }
 
   toggleHelp(e) {
     e.preventDefault();
-    const tooltip = document.getElementById('jibunHelpTooltip');
-    const toggle = document.getElementById('jibunHelpToggle');
-    if (!tooltip || !toggle) return;
-    tooltip.classList.toggle('show');
-    toggle.classList.toggle('active');
+    document.getElementById('jibunHelpTooltip')?.classList.toggle('show');
+    document.getElementById('jibunHelpToggle')?.classList.toggle('active');
   }
 
   handleOutsideClick(e) {
-    const tooltip = document.getElementById('jibunHelpTooltip');
-    const toggle = document.getElementById('jibunHelpToggle');
     const inputGroup = document.querySelector('.input-with-help');
-    if (!tooltip || !toggle || !inputGroup) return;
-    if (!inputGroup.contains(e.target)) {
-      tooltip.classList.remove('show');
-      toggle.classList.remove('active');
+    if (!inputGroup?.contains(e.target)) {
+      document.getElementById('jibunHelpTooltip')?.classList.remove('show');
+      document.getElementById('jibunHelpToggle')?.classList.remove('active');
     }
   }
 
-  /* ---------- 유틸 ---------- */
+  _showEmpty(div, msg) {
+    if (!div) return;
+    div.innerHTML = `<div class="empty-state">${msg}</div>`;
+    div.style.display = 'block';
+  }
+
+  rowToItem(r) {
+    const name    = r.querySelector('locatadd_nm')?.textContent?.trim() || '';
+    const sido    = r.querySelector('sido_cd')?.textContent || '';
+    const sgg     = r.querySelector('sgg_cd')?.textContent  || '';
+    const umd     = r.querySelector('umd_cd')?.textContent  || '';
+    const ri      = r.querySelector('ri_cd')?.textContent   || '00';
+    const sigungu  = `${sido}${sgg}`;
+    const bjdong   = `${umd}${ri}`;
+    const fullCode = `${sido}${sgg}${umd}${ri}`;
+    const tail     = name.slice(-1);
+    const typeByName = ri !== '00' ? '리' : (tail === '동' ? '동' : tail === '읍' ? '읍' : tail === '면' ? '면' : '동');
+    return { displayName: name, typeLabel: typeByName, sigungu, bjdong, fullCode };
+  }
+
+  scoreItem(term, it) {
+    const t = term.trim(), name = it.displayName;
+    if (!t || !name) return 0;
+    if (name === t) return 300;
+    if (name.startsWith(t)) return 200;
+    if (name.includes(t)) return 100;
+    return 0;
+  }
+
+  kindToBadgeClass(typeLabel) {
+    if (typeLabel === '동') return 'badge-dong';
+    if (typeLabel === '읍') return 'badge-eup';
+    if (typeLabel === '면') return 'badge-myeon';
+    return 'badge-ri';
+  }
+
   showToast(message, type = 'info') {
     const toast = document.getElementById('toast');
     if (!toast) return;

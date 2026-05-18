@@ -79,6 +79,31 @@
                 padding: 14px 8px;
             }
         }
+
+        /* 주소 모드 pill */
+        .addr-mode-pills {
+            display: flex;
+            gap: 6px;
+            margin-bottom: 8px;
+        }
+        .addr-mode-pill { cursor: pointer; }
+        .addr-mode-pill input[type="radio"] { display: none; }
+        .addr-mode-pill span {
+            display: inline-block;
+            padding: 4px 16px;
+            border-radius: 20px;
+            border: 1.5px solid #adb5bd;
+            font-size: 0.82rem;
+            color: #6c757d;
+            transition: all 0.2s;
+            user-select: none;
+        }
+        .addr-mode-pill input[type="radio"]:checked + span {
+            background: #004283;
+            border-color: #004283;
+            color: #fff;
+            font-weight: 600;
+        }
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="config.js"></script>
@@ -91,6 +116,9 @@
     <script src="services/serviceManager.js"></script>
     <script src="services/floorOutlineService.js"></script>
     <script src="services/exclusiveAreaService.js"></script>
+    <script src="services/buildingTitleService.js"></script>
+    <script src="services/landInfoService.js"></script>
+    <script src="services/landPriceService.js"></script>
     <script src="services/aiAssistantService.js"></script>
     <script src="app.js"></script>
     <script src="batch-search-manual.js"></script>
@@ -110,6 +138,15 @@
             <button class="tab-button" data-service="exclusive-area">
                 📐 전유공유면적
             </button>
+            <button class="tab-button" data-service="building-title">
+                📋 표제부
+            </button>
+            <button class="tab-button" data-service="land-info">
+                🌏 토지정보
+            </button>
+            <button class="tab-button" data-service="land-price">
+                📊 공시지가
+            </button>
             <button class="tab-button" data-service="ai-assistant" style="display:none">
                 🤖 AI 묻기
             </button>
@@ -128,40 +165,39 @@
                 <input type="hidden" id="bjdongCd" />
                 <input type="hidden" id="bun" />
                 <input type="hidden" id="ji" />
+                <input type="hidden" id="addrLat" />
+                <input type="hidden" id="addrLon" />
 
-                <!-- 행정구역 검색 -->
+                <!-- 주소 검색 (동·지번 / 도로명 pill 전환) -->
                 <div class="form-group">
-                    <label for="regionSearch">📍 행정구역 검색 <span class="required">*</span></label>
-
-                    <div class="search-container">
-                        <input type="text" id="regionSearch" placeholder="예: '도곡동' 또는 '도곡' " />
-                        <button type="button" class="btn btn-secondary" id="searchRegionBtn">검색</button>
+                    <label>📍 주소 검색 <span class="required">*</span></label>
+                    <div class="addr-mode-pills">
+                        <label class="addr-mode-pill">
+                            <input type="radio" name="addrMode" value="jibun" checked />
+                            <span>동·지번</span>
+                        </label>
+                        <label class="addr-mode-pill">
+                            <input type="radio" name="addrMode" value="road" />
+                            <span>도로명</span>
+                        </label>
                     </div>
-
-                    <!-- (유지) 상태 메시지 -->
-                    <div id="regionSearchStatus" class="region-search-status" style="display:none;"></div>
-
-                    <!-- ✅ (신규) 요약바 + 타입 필터 칩 -->
-                    <div id="summaryBar" class="summary-bar" style="display:none;">
-                        <div id="summaryText" class="summary-text">검색 결과</div>
-                        <div class="chips">
-                        <span id="chipAll"  class="chip active">전체</span>
-                        <span id="chipDong" class="chip">동</span>
-                        <span id="chipRi"   class="chip">리</span>
-                        </div>
+                    <div id="jibunSearchContainer" class="search-container">
+                        <input type="text" id="unifiedAddrInput" placeholder="예: 역삼동 737-37" />
+                        <button type="button" class="btn btn-secondary" id="unifiedAddrSearchBtn">검색</button>
                     </div>
-
-                    <!-- ✅ (교체) 결과 영역: class 를 result-list 로 -->
-                    <div id="regionResults" class="result-list"></div>
-
-                    <!-- (유지) 선택 배지 -->
+                    <div id="unifiedAddrResults" class="result-list" style="display:none;"></div>
+                    <div id="roadSearchContainer" class="search-container" style="display:none;">
+                        <input type="text" id="roadAddrInput" placeholder="예: 강남구 테헤란로 152" />
+                        <button type="button" class="btn btn-secondary" id="roadSearchBtn">검색</button>
+                    </div>
+                    <div id="roadSearchResults" class="result-list" style="display:none;"></div>
                     <div id="selectedRegion" class="selected-region" style="display:none;"></div>
                 </div>
 
-                <!-- 수동 코드 입력 -->
+                <!-- 수동 코드 입력 (fallback) -->
                 <div class="manual-code-section">
                     <button type="button" class="manual-code-toggle" id="manualCodeToggle">
-                        지역 검색이 안 되시나요?
+                        코드 직접 입력
                     </button>
                     <div class="manual-code-content" id="manualCodeContent">
                         <div class="manual-code-info">
@@ -181,20 +217,18 @@
                     </div>
                 </div>
 
-                
-
                 <!-- 지번 입력 -->
                 <div class="form-group">
                     <label for="jibun">🏠 지번 입력 <span class="required">*</span></label>
                     <div class="input-with-help">
-                        <input type="text" id="jibun" placeholder="예: 467 (전체) 또는 467-14 (특정 부속지번)" />
+                        <input type="text" id="jibun" placeholder="예: 467 또는 467-14" />
                         <button type="button" class="help-toggle" id="jibunHelpToggle">❓</button>
                         <div class="help-tooltip" id="jibunHelpTooltip">
                             <div class="help-content">
                                 <strong>📍 지번 입력 가이드</strong><br>
-                                • <code>467</code> → 467번지의 모든 부속지번 포함<br>
-                                • <code>467-0</code> → 467번지만 조회 (부속지번 제외)<br>
-                                • <code>467-14</code> → 467-14번지만 정확히 조회
+                                • <code>467</code> → 467번지 전체 (부속지번 포함)<br>
+                                • <code>467-0</code> → 467번지만 (부속지번 제외)<br>
+                                • <code>467-14</code> → 467-14번지만
                             </div>
                         </div>
                     </div>
@@ -264,17 +298,9 @@
     <div id="toast" class="toast"></div>
     
     <script>
-        // 수동 코드 입력 토글 기능
         document.addEventListener('DOMContentLoaded', function() {
-            const manualCodeToggle = document.getElementById('manualCodeToggle');
-            const manualCodeContent = document.getElementById('manualCodeContent');
-            
-            if (manualCodeToggle && manualCodeContent) {
-                manualCodeToggle.addEventListener('click', function() {
-                    this.classList.toggle('active');
-                    manualCodeContent.classList.toggle('active');
-                });
-            }
+            var t = document.getElementById('manualCodeToggle'), c = document.getElementById('manualCodeContent');
+            if (t && c) t.addEventListener('click', function() { this.classList.toggle('active'); c.classList.toggle('active'); });
         });
     </script>
 </body>
